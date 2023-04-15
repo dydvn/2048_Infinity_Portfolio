@@ -2,5 +2,3 @@
 
 Android link :
 https://play.google.com/store/apps/details?id=com.TwoDHyperSND.Infinity2048
-
-![Untitled](https://user-images.githubusercontent.com/62327209/232213217-13853e8f-9b51-473c-b24e-85e21300bed4.png)
