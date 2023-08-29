@@ -41,7 +41,8 @@ Platform : Mobile (Google play)
 ![Untitled](https://user-images.githubusercontent.com/62327209/232215898-3ddd99f9-b5d2-4a3e-aa13-24d7f100e0c1.png)
 - 한 번의 반복에는 4개의 Box가 등장합니다.
 - 2 Box가 플레이어가 닿아야 하는 정답 Box라면, 정답 Box의 2배수인 4 Box는 필수로 나오고, 나머지 두 개의 Box는 2와 4를 제외한 2의 n승 값을 랜덤으로 가지고 나옵니다. (이때, 1 ≤ n ≤ 11)
-- Code - [https://github.com/dydvn/Infinity_2048/blob/main/Game_master.cs](https://github.com/dydvn/Infinity_2048/blob/main/Game_master.cs) (box_re2() 함수)
+- 특정 확률로 나머지 두 개의 Box 중에 하나의 박스는 부스터 박스가 됩니다.
+- Code - [https://github.com/dydvn/Infinity_2048/blob/main/Game_master.cs](https://github.com/dydvn/Infinity_2048/blob/main/Game_master.cs)
 
 ------------------------------------------------------------------------
 
