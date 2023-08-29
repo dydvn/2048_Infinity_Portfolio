@@ -56,6 +56,11 @@ https://user-images.githubusercontent.com/62327209/232220123-7c3cb81d-986a-4dc2-
 - 화면 하단의 파티클 제작
 
 -----------------------------------------------------
+🛠 배너, 전면 팝업, 보상형 광고 실행 스크립트
+
+- Code : https://github.com/dydvn/2048_Infinity_Portfolio/blob/main/Manager_Admob.cs
+  
+-----------------------------------------------------
 🛠 기타 함수
 
 - Code : https://github.com/dydvn/2048_Infinity_Portfolio/blob/main/Main_master.cs
