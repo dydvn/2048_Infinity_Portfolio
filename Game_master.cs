@@ -1,14 +1,17 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 using System.IO;
-using GoogleMobileAds.Api;
+
+using Random = UnityEngine.Random;
 
 public class Game_master : MonoBehaviour
 {
     AudioSource as_BGM;
+    public Move_player move_Player;
 
     public GameObject go_newbox;
     public GameObject go_Portal;
@@ -16,105 +19,66 @@ public class Game_master : MonoBehaviour
     public GameObject go_ScoreText;
     public GameObject go_GameOverUI;
     public GameObject go_GameOverScore;
-    public GameObject go_ScoreTextUnderPlayer;
     public GameObject go_GameOverText;
     public GameObject go_Player;
     public GameObject go_ScoreValue;
     public GameObject[] go_Background;
     public GameObject[] go_Ground;
-    public GameObject[] go_Cloud;
     public GameObject go_Arrow;
     public GameObject go_Particle;
+    public GameObject go_PauseBTN;
     public GameObject go_PausePanel;
+    public GameObject go_GroundLine;
+    public GameObject go_Phoenix;
+    public GameObject go_BoostEffect;
     public Vector3 v3_PortalPos;
     public Text txt_Score;
     public TextMesh txt_ScoreUnderPlayer;
     public Text txt_Score_GameOver;
+
+    [Header("Text")]
+    public Text txt_ADCount;
+
     public AudioSource as_Sfx;
     public AudioSource as_SfxJump;
+    public AudioSource as_SfxEat;
     public AudioClip ac_Clear;
     public AudioClip ac_Death;
     public AudioClip ac_Warp;
-    public AudioClip ac_Eat;
     public AudioClip ac_BGM1;
     public AudioClip ac_BGM2;
+    public AudioClip ac_BGM_Boost;
     public SpriteRenderer sr_BG;
     public Sprite[] sprt_BG;
+    public Sprite sprt_NormalBox;
     public Sprite sprt_AnswerBox;
+    public ParticleSystem go_BoosterParticle;
     public int nScore;
     public int nScore_2nd;
     public int nStage;
     public int nClearCount;
     public float ftime;
     public float fTime2;
-    public bool isPlay;
+    public bool isDead = false;
 
     GameObject[] go_Box = new GameObject[4];
-    GameObject go_NewPortal;
-    TextMesh[] txt_Box = new TextMesh[4];
+    List<GameObject> boxPool = new();
 
     public IEnumerator co_BoxRespone;
-    public IEnumerator co_BoxRespone2;
+    public IEnumerator co_BoxBoost;
 
-    private bool isFisrt;
+    private int adCount;
+    private bool beforeBoost;
+    public float boostPercent;
     private Vector3[] box_pos = new Vector3[4];
-
-    private Vector3 Temp;
 
     private void Start()
     {
         nStage = Master.nStage;
-        isFisrt = true;
-        isPlay = true;
-
-        //게임 초기화
-        if (Master.nStage == 1)
-        {   //1탄이면
-            go_Background[0].SetActive(true);
-            go_Background[1].SetActive(false);
-            go_Ground[0].SetActive(true);
-            go_Ground[1].SetActive(false);
-            go_ScoreText.SetActive(false);
-            go_ScoreValue.SetActive(false);
-            go_ScoreTextUnderPlayer.SetActive(true);
-            txt_ScoreUnderPlayer.gameObject.GetComponent<MeshRenderer>().sortingLayerName = "C_Layer";
-            for (int i = 0; i < 3; i++)
-            {
-                go_Cloud[i].SetActive(true);
-            }
-            if (!as_BGM)
-            {
-                as_BGM = GameObject.Find("BGM(Clone)").GetComponent<AudioSource>();
-            }
-        }
-        else if (Master.nStage == 2)
-        {   //2탄이면
-            nScore = 2;
-            go_Background[0].SetActive(false);
-            go_Background[1].SetActive(true);
-            go_Ground[0].SetActive(false);
-            go_Ground[1].SetActive(true);
-            go_ScoreText.SetActive(true);
-            go_ScoreTextUnderPlayer.SetActive(false);
-            go_Particle.SetActive(true);
-            go_ScoreValue.SetActive(true);
-            sr_BG.sprite = sprt_BG[Random.Range(0, 3)];
-            for (int i = 0; i < 3; i++)
-            {
-                go_Cloud[i].SetActive(false);
-            }
-            if (PlayerPrefs.GetInt("isStage1Clear") == 0)
-            {
-                PlayerPrefs.SetInt("isStage1Clear", 1);
-            }
-
-            if (!as_BGM)
-            {
-                as_BGM = GameObject.Find("BGM(Clone)").GetComponent<AudioSource>();
-            }
-        }
-        else
-            print("이러면 안 돼");
+        go_ClearText.GetComponent<MeshRenderer>().sortingLayerName = "C_Layer";
+        txt_ScoreUnderPlayer.gameObject.GetComponent<MeshRenderer>().sortingLayerName = "C_Layer";
+        SetADCount(nStage - 1);
+        Master.boxSpeed = nStage + 1.0f;
 
         float fTemp = Camera.main.ViewportToWorldPoint(new Vector2(1f, 0.5f)).x + 0.79f;
         for (int i = 0; i < 4; i++)
@@ -126,41 +90,97 @@ public class Game_master : MonoBehaviour
         box_pos[2].y = -0.4f;
         box_pos[3].y = -1.79f;
 
+        go_Background[0].SetActive(nStage == 1);
+        go_Background[1].SetActive(nStage == 2);
+        go_Ground[0].SetActive(nStage == 1);
+        go_Ground[1].SetActive(nStage == 2);
+        go_ScoreText.SetActive(nStage == 2);
+        go_ScoreValue.SetActive(nStage == 2);
+        nScore = 2;
+        txt_Score.text = txt_ScoreUnderPlayer.text = nScore.ToString();
+        boxPool.Add(Instantiate(go_newbox));
+
+        if (!as_BGM)
+        {
+            as_BGM = GameObject.Find("BGM(Clone)").GetComponent<AudioSource>();
+        }
+        co_BoxBoost = box_boost();
+        go_BoosterParticle.gameObject.transform.position = new Vector3(Camera.main.ViewportToWorldPoint(new Vector2(1f, 0.5f)).x, 0, 0);
+
+        //게임 초기화
+        if (nStage == 1)
+        {   //1탄이면
+
+            if (Master.nFlyCount == 0)
+                go_Arrow.SetActive(true);
+            else
+                box_Spawn();
+        }
+        else if (nStage == 2)
+        {   //2탄이면
+
+            // 값 세팅
+            beforeBoost = true;
+            boostPercent = 0;
+            go_Particle.SetActive(true);
+            go_Particle.transform.position = new Vector3(Camera.main.ViewportToWorldPoint(new Vector2(0.9f, 0.5f)).x, go_Particle.transform.position.y, 0);
+            co_BoxRespone = box_re2();
+            if (PlayerPrefs.GetInt("isStage1Clear") == 0)
+            {
+                PlayerPrefs.SetInt("isStage1Clear", 1);
+            }
+            Master.nFlyCount = Master.nFlyCount == 0 ? 1 : Master.nFlyCount;
+
+
+            // 배경 세팅
+            sr_BG.sprite = sprt_BG[Random.Range(0, 3)];
+            var bgLeft = new Vector3(sr_BG.transform.position.x - sr_BG.sprite.rect.width * 0.01f, 0, 0);
+            var bgRight = new Vector3(sr_BG.transform.position.x + sr_BG.sprite.rect.width * 0.01f, 0, 0);
+            var left = Instantiate(sr_BG.gameObject);
+            var right = Instantiate(sr_BG.gameObject);
+            left.transform.position = bgLeft;
+            left.transform.localScale = new Vector3(-1, 1, 1);
+            right.transform.position = bgRight;
+            right.transform.localScale = new Vector3(-1, 1, 1);
+
+
+
+            // 실행
+            StartCoroutine(co_BoxRespone);
+            if (!Manager_Admob.Instance.CanShowRewardedAd())
+                Manager_Admob.Instance.LoadRewardedAd();
+            if (!Manager_Admob.Instance.CanShowInterstitialAd())
+                Manager_Admob.Instance.LoadInterstitialAd();
+        }
+        
+
         nScore_2nd = 0;
         go_ClearText.SetActive(false);
-        co_BoxRespone = box_re();
-        co_BoxRespone2 = box_re2();
 
-        if (nStage == 1 && Master.nFlyCount != 0)
-            StartCoroutine(co_BoxRespone);
-        else if (nStage == 2)
-            StartCoroutine(co_BoxRespone2);
-        else
-            go_Arrow.SetActive(true);
 
-        as_Sfx.enabled = Master.isSFX;
+        as_Sfx.mute = !Master.isSFX;
+        as_SfxJump.mute = !Master.isSFX;
+        as_SfxEat.mute = !Master.isSFX;
+
+        Manager_Admob.Instance.LoadBannerAd();
     }
 
     private void Update()
     {
+        txt_Score.text = nScore.ToString();
+        txt_ScoreUnderPlayer.text = txt_Score.text;
+
         if (nStage == 1)
         {
-            txt_Score.text = nScore.ToString();
-            txt_ScoreUnderPlayer.text = txt_Score.text;
             if (nScore >= 2048)
             {
                 Master.nClearCount++;
                 PlayerPrefs.SetInt("nClearCount", Master.nClearCount);
 
-                Social.ReportProgress(GPGSIds.stage1Clear, 100, null);
+                Social.ReportProgress(GPGSIds.achievement_stage_1_clear, 100, null);
 
-                as_Sfx.clip = ac_Clear;
-                as_Sfx.Play();
-                go_ClearText.SetActive(true);
-                nScore = 2;
-                StopCoroutine(co_BoxRespone);
-                go_NewPortal = Instantiate(go_Portal, new Vector3(9, box_pos[Random.Range(0, 3)].y, 0), Quaternion.identity);
-                StartCoroutine(StageOneCorou());
+                StartCoroutine(Finish("Congratulation!\n2048!", nStage));
+                Instantiate(go_Portal, new Vector3(9, box_pos[Random.Range(0, 3)].y, 0), Quaternion.identity);
             }
         }
         else if (nStage == 2)
@@ -171,94 +191,105 @@ public class Game_master : MonoBehaviour
                 Master.nClearCount++;
                 PlayerPrefs.SetInt("nClearCount", Master.nClearCount);
 
-
                 if (Master.nClearCount >= 50)
-                    Social.ReportProgress(GPGSIds.Make2048, 100, null);
+                    Social.ReportProgress(GPGSIds.achievement_2048, 100, null);
                 else if (Master.nClearCount >= 45)
-                    Social.ReportProgress(GPGSIds.Make2048, 90, null);
+                    Social.ReportProgress(GPGSIds.achievement_2048, 90, null);
                 else if (Master.nClearCount >= 40)
-                    Social.ReportProgress(GPGSIds.Make2048, 80, null);
+                    Social.ReportProgress(GPGSIds.achievement_2048, 80, null);
                 else if (Master.nClearCount >= 35)
-                    Social.ReportProgress(GPGSIds.Make2048, 70, null);
+                    Social.ReportProgress(GPGSIds.achievement_2048, 70, null);
                 else if (Master.nClearCount >= 30)
-                    Social.ReportProgress(GPGSIds.Make2048, 60, null);
+                    Social.ReportProgress(GPGSIds.achievement_2048, 60, null);
                 else if (Master.nClearCount >= 25)
-                    Social.ReportProgress(GPGSIds.Make2048, 50, null);
+                    Social.ReportProgress(GPGSIds.achievement_2048, 50, null);
                 else if (Master.nClearCount >= 20)
-                    Social.ReportProgress(GPGSIds.Make2048, 40, null);
+                    Social.ReportProgress(GPGSIds.achievement_2048, 40, null);
                 else if (Master.nClearCount >= 15)
-                    Social.ReportProgress(GPGSIds.Make2048, 30, null);
+                    Social.ReportProgress(GPGSIds.achievement_2048, 30, null);
                 else if (Master.nClearCount >= 10)
-                    Social.ReportProgress(GPGSIds.Make2048, 20, null);
+                    Social.ReportProgress(GPGSIds.achievement_2048, 20, null);
                 else if (Master.nClearCount >= 5)
-                    Social.ReportProgress(GPGSIds.Make2048, 10, null);
+                    Social.ReportProgress(GPGSIds.achievement_2048, 10, null);
 
-                as_Sfx.clip = ac_Clear;
-                as_Sfx.Play();
-                go_ClearText.SetActive(true);
-                nScore = 2;
-                StopCoroutine(co_BoxRespone2);
-                StartCoroutine(StageTwoCorou());
-                GameObject[] go_Temp = GameObject.FindGameObjectsWithTag("Box");
-                int nSize = go_Temp.Length;
-                for (int i = 0; i < nSize; i++)
-                {
-                    Destroy(go_Temp[i]);
-                }
+                StartCoroutine(Finish("Congratulation!\n2048!"));
             }
         }
     }
 
-    public IEnumerator box_re()
+    public IEnumerator Finish(string _str, int stageNum = 2)
     {
-        yield return new WaitForSeconds(2);
+        as_Sfx.clip = ac_Clear;
+        as_Sfx.Play();
+        SetClearText(_str);
+        nScore = 2;
+        if (stageNum == 2)
+            StopCoroutine(co_BoxRespone);
+        BoxClear();
 
-        int nAnswerBox = Random.Range(0, 4);
+        yield return new WaitForSeconds(3);
 
-        while (true)
+        go_ClearText.SetActive(false);
+        if (stageNum == 2 && !isDead)
+            StartCoroutine(co_BoxRespone);
+    }
+
+    public void SetClearText(string _str)
+    {
+        go_ClearText.GetComponent<TextMesh>().text = _str;
+        go_ClearText.SetActive(true);
+    }
+
+    public void BoxClear()
+    {
+        foreach(var obj in boxPool)
         {
-            for (int i = 0; i < 4; i++)
+            obj.SetActive(false);
+        }
+    }
+
+    public void box_Spawn()
+    {
+        int nAnswerBox;
+
+        for (int i = 0; i < 4; i++)
+        {
+            go_Box[i] = GetBoxFromPool();
+            go_Box[i].SetActive(true);
+            go_Box[i].transform.position = box_pos[i];
+            go_Box[i].GetComponent<SpriteRenderer>().sprite = sprt_NormalBox;
+        }
+
+        nAnswerBox = Random.Range(0, 4);
+        go_Box[nAnswerBox].GetComponent<Move_box>().SetValue(nScore.ToString());
+        go_Box[nAnswerBox].GetComponent<SpriteRenderer>().sprite = sprt_AnswerBox;
+
+        int[] nTemp_ = new int[4];
+        int nTemp;
+
+        for (int j = 0; j < 4; j++)
+        {
+            if (j == nAnswerBox)
+                continue;
+
+            do
             {
-                go_Box[i] = Instantiate(go_newbox, box_pos[i], Quaternion.identity);
-                txt_Box[i] = go_Box[i].transform.GetChild(0).GetComponent<TextMesh>();
-            }
-
-            if (!isFisrt)
-                nAnswerBox = Random.Range(0, 4);
-            txt_Box[nAnswerBox].text = nScore.ToString();
-            go_Box[nAnswerBox].GetComponent<SpriteRenderer>().sprite = sprt_AnswerBox;
-
-            int[] nTemp_ = new int[4];
-            int nTemp;
-
-            for (int j = 0; j < 4; j++)
-            {
-                if (j == nAnswerBox)
-                    continue;
-
-                do
+                nTemp = (int)Mathf.Pow(2, Random.Range(1, 11));
+                nTemp_[j] = nTemp;
+                for (int k = 0; k < 4; k++)
                 {
-                    nTemp = (int)Mathf.Pow(2, Random.Range(1, 11));
-                    nTemp_[j] = nTemp;
-                    for (int k = 0; k < 4; k++)
+                    if (k == j)
+                        continue;
+                    while (nTemp == nTemp_[k])
                     {
-                        if (k == j)
-                            continue;
-                        while (nTemp == nTemp_[k])
-                        {
-                            nTemp = (int)Mathf.Pow(2, Random.Range(1, 11));
-                        }
-                        nTemp_[j] = nTemp;
+                        nTemp = (int)Mathf.Pow(2, Random.Range(1, 11));
                     }
-                } while (nTemp == nScore);
+                    nTemp_[j] = nTemp;
+                }
+            } while (nTemp == nScore || nTemp == nScore * 2);
 
 
-                txt_Box[j].text = (nTemp).ToString();
-            }
-            if (isFisrt)
-                isFisrt = false;
-
-            yield return new WaitForSeconds(ftime);
+            go_Box[j].GetComponent<Move_box>().SetValue(nTemp.ToString());
         }
     }
 
@@ -271,25 +302,29 @@ public class Game_master : MonoBehaviour
             for (int i = 0; i < 4; i++)
             {
                 box_pos[i].x = Random.Range(fTempA, fTempB);
-                go_Box[i] = Instantiate(go_newbox, box_pos[i], Quaternion.identity);
-                txt_Box[i] = go_Box[i].transform.GetChild(0).GetComponent<TextMesh>();
+                go_Box[i] = GetBoxFromPool();
+                go_Box[i].SetActive(true);
+                go_Box[i].transform.position = box_pos[i];
                 go_Box[i].transform.localScale = new Vector3(0.8f, 0.8f, 0.8f);
             }
 
             int nAnswerBox = Random.Range(0, 4);
             int nAnswerBox2 = 3 - nAnswerBox;
 
-            txt_Box[nAnswerBox].text = nScore.ToString();
-            txt_Box[nAnswerBox2].text = (nScore * 2).ToString();
+            go_Box[nAnswerBox].GetComponent<Move_box>().SetValue(nScore.ToString());
+            go_Box[nAnswerBox2].GetComponent<Move_box>().SetValue((nScore * 2).ToString());
 
             int n3rd = 0;
+            int nTemp;
+
+            bool isBoost = GetAlphabet(boostPercent) & !beforeBoost;
+            beforeBoost = isBoost;
 
             for (int j = 0; j < 4; j++)
             {
                 if (j == nAnswerBox || j == nAnswerBox2)
                     continue;
 
-                int nTemp;
 
                 do
                 {
@@ -297,52 +332,130 @@ public class Game_master : MonoBehaviour
                 } while (nTemp == nScore || nTemp == nScore * 2 || nTemp == n3rd);
 
                 if (n3rd == 0)
+                {
                     n3rd = nTemp;
-
-
-                txt_Box[j].text = (nTemp).ToString();
+                }
+                else
+                {
+                    if (isBoost)
+                    {
+                        go_Box[j].transform.GetChild(0).gameObject.SetActive(true);
+                        go_Box[j].transform.GetChild(1).gameObject.SetActive(false);
+                        nTemp = -1;
+                    }
+                }
+                go_Box[j].GetComponent<Move_box>().SetValue(nTemp.ToString());
             }
 
+            boostPercent += 1;
+
             yield return new WaitForSeconds(fTime2);
+        }
+
+        bool GetAlphabet(float _percent)
+        {
+            int ran = Random.Range(0, 100);
+            if (ran < _percent)
+                return true;
+
+            return false;
+        }
+    }
+
+    public IEnumerator BoostStart()
+    {
+        Master.boostMode = true;
+        BoxClear();
+        Master.boxSpeed = 10;
+        boostPercent = 0;
+        StopCoroutine(co_BoxRespone);
+        StartCoroutine(co_BoxBoost);
+        go_GroundLine.SetActive(true);
+        go_BoosterParticle.Play();
+        as_BGM.clip = ac_BGM_Boost;
+        as_BGM.Play();
+        go_Phoenix.transform.position = move_Player.gameObject.transform.position;
+        go_Phoenix.SetActive(true);
+        go_PauseBTN.SetActive(false);
+        StartCoroutine(CameraZoomOut());
+        txt_ScoreUnderPlayer.gameObject.SetActive(false);
+
+        IEnumerator CameraZoomOut()
+        {
+            while(Camera.main.orthographicSize < 7f)
+            {
+                Camera.main.orthographicSize += Time.deltaTime * 3;
+                yield return null;
+            }
+            Camera.main.orthographicSize = 7;
+        }
+
+
+
+        yield return new WaitForSeconds(18);
+
+
+
+
+        StartCoroutine(CameraZoomIn());
+        IEnumerator CameraZoomIn()
+        {
+            while (Camera.main.orthographicSize > 5)
+            {
+                Camera.main.orthographicSize -= Time.deltaTime * 3;
+                yield return null;
+            }
+            Camera.main.orthographicSize = 5;
+        }
+
+        txt_ScoreUnderPlayer.gameObject.SetActive(true);
+        as_BGM.clip = ac_BGM2;
+        as_BGM.Play();
+        go_BoosterParticle.Stop();
+        StopCoroutine(co_BoxBoost);
+        go_PauseBTN.SetActive(true);
+        go_GroundLine.SetActive(false);
+        go_BoostEffect.SetActive(false);
+        Master.boxSpeed = 3;
+        Master.boostMode = false;
+        StartCoroutine(Finish("Again 2048!"));
+    }
+
+    public IEnumerator box_boost()
+    {
+        float fTempA = Camera.main.ViewportToWorldPoint(new Vector2(1f, 0.5f)).x;
+        float fTempB = Camera.main.ViewportToWorldPoint(new Vector2(1f, 0.5f)).x + 2;
+
+        while (true)
+        {
+            for (int i = 0; i < 4; i++)
+            {
+                box_pos[i].x = Random.Range(fTempA, fTempB);
+                go_Box[i] = GetBoxFromPool();
+                go_Box[i].SetActive(true);
+                go_Box[i].transform.position = box_pos[i];
+                go_Box[i].transform.localScale = new Vector3(0.8f, 0.8f, 0.8f);
+                go_Box[i].GetComponent<Move_box>().SetValue(Mathf.Pow(2, Random.Range(1, 11)).ToString());
+            }
+
+            yield return new WaitForSeconds(0.4f);
         }
     }
 
     public void Regame()
     {
-        isPlay = true;
-        if (nStage == 1)
-        {
-            SceneManager.LoadScene(Master.SCENE_PLAY);
-            Time.timeScale = 1;
-        }
-        else if (nStage == 2)
-        {
-            SceneManager.LoadScene(Master.SCENE_PLAY);
-            Time.timeScale = 1;
-        }
+        SceneManager.LoadScene(Master.SCENE_PLAY);
     }
 
     public void Home()
     {
         SceneManager.LoadScene(Master.SCENE_MAIN);
-        if (Master.nStage == 2)
+        if (nStage == 2)
         {
             as_BGM.clip = ac_BGM1;
             as_BGM.Play();
         }
         Time.timeScale = 1;
-    }
-
-    IEnumerator StageOneCorou()
-    {
-        yield return new WaitForSeconds(3);
-        go_ClearText.SetActive(false);
-    }
-    IEnumerator StageTwoCorou()
-    {
-        yield return new WaitForSeconds(3);
-        go_ClearText.SetActive(false);
-        StartCoroutine(co_BoxRespone2);
     }
 
     public void BTN_SS()
@@ -369,15 +482,50 @@ public class Game_master : MonoBehaviour
 
     public void BTN_Pause()
     {
-        if (Time.timeScale > 0)
+        go_PausePanel.SetActive(Time.timeScale > 0);
+        Time.timeScale = Convert.ToInt32(!(Time.timeScale > 0));
+    }
+
+    public void BTN_AD()
+    {
+        if (adCount < 1)
+            return;
+
+        Manager_Admob.Instance.ShowRewardedAd(reward);
+
+        //재시작
+        bool reward()
         {
-            Time.timeScale = 0;
-            go_PausePanel.SetActive(true);
+            isDead = false;
+            go_GameOverUI.SetActive(false);
+            go_Player.transform.SetPositionAndRotation(new Vector3(-1.76f, 0.33f, 0), Quaternion.identity);
+            go_Player.GetComponent<Rigidbody2D>().velocity = Vector2.zero;
+            move_Player.anim.ResetTrigger(move_Player.animTriggerID_Die);
+            move_Player.anim.SetTrigger(move_Player.animTriggerID_Fly);
+            if (Master.nStage == 1)
+                box_Spawn();
+            else
+                StartCoroutine(BoostStart());
+            SetADCount(0);
+            return true;
         }
-        else
+    }
+
+    public void SetADCount(int _adCount)
+    {
+        adCount = _adCount;
+        txt_ADCount.text = string.Format($"AD {_adCount}/1");
+    }
+
+    private GameObject GetBoxFromPool()
+    {
+        foreach(var obj in boxPool)
         {
-            Time.timeScale = 1;
-            go_PausePanel.SetActive(false);
+            if (!obj.activeSelf)
+                return obj;
         }
+        var newObject = Instantiate(go_newbox);
+        boxPool.Add(newObject);
+        return newObject;
     }
 }
